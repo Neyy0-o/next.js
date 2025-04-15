@@ -19,7 +19,10 @@ use turbo_tasks::{
 use crate::{
     chunk::ChunkingType,
     module::Module,
-    module_graph::{GraphTraversalAction, ModuleGraph, SingleModuleGraphModuleNode},
+    module_graph::{
+        GraphNodeIndex, GraphTraversalAction, ModuleGraph, RefData, SingleModuleGraphModuleNode,
+        SingleModuleGraphNode, get_node, get_node_idx, traced_di_graph::iter_neighbors_rev,
+    },
 };
 
 #[derive(
