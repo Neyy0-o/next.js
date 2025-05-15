@@ -19,10 +19,7 @@ use turbo_tasks::{
 use crate::{
     chunk::ChunkingType,
     module::Module,
-    module_graph::{
-        GraphNodeIndex, GraphTraversalAction, ModuleGraph, RefData, SingleModuleGraphModuleNode,
-        SingleModuleGraphNode, get_node, get_node_idx, traced_di_graph::iter_neighbors_rev,
-    },
+    module_graph::{GraphTraversalAction, ModuleGraph, RefData, SingleModuleGraphModuleNode},
 };
 
 #[derive(
@@ -465,7 +462,7 @@ pub async fn compute_chunk_group_info(graph: &ModuleGraph) -> Result<Vc<ChunkGro
                     })
                     .collect::<Result<Vec<_>>>()?,
                 &mut module_chunk_groups,
-                |parent_info: Option<(&'_ SingleModuleGraphModuleNode, &'_ ChunkingType)>,
+                |parent_info: Option<(&'_ SingleModuleGraphModuleNode, &'_ RefData)>,
                  node: &'_ SingleModuleGraphModuleNode,
                  module_chunk_groups: &mut FxHashMap<
                     ResolvedVc<Box<dyn Module>>,
@@ -476,8 +473,8 @@ pub async fn compute_chunk_group_info(graph: &ModuleGraph) -> Result<Vc<ChunkGro
                         Inherit(ResolvedVc<Box<dyn Module>>),
                         ChunkGroup(It),
                     }
-                    let chunk_groups = if let Some((parent, chunking_type)) = parent_info {
-                        match chunking_type {
+                    let chunk_groups = if let Some((parent, ref_data)) = parent_info {
+                        match &ref_data.chunking_type {
                             ChunkingType::Parallel { .. } => {
                                 ChunkGroupInheritance::Inherit(parent.module)
                             }

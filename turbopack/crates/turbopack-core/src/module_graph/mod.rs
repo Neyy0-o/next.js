@@ -1218,7 +1218,7 @@ impl ModuleGraph {
         entries: impl IntoIterator<Item = (ResolvedVc<Box<dyn Module>>, P)>,
         state: &mut S,
         mut visit: impl FnMut(
-            Option<(&'_ SingleModuleGraphModuleNode, &'_ ChunkingType)>,
+            Option<(&'_ SingleModuleGraphModuleNode, &'_ RefData)>,
             &'_ SingleModuleGraphModuleNode,
             &mut S,
         ) -> Result<GraphTraversalAction>,
