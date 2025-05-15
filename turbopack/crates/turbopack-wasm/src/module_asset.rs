@@ -15,7 +15,7 @@ use turbopack_core::{
     output::OutputAssets,
     reference::{ModuleReferences, SingleChunkableModuleReference},
     reference_type::ReferenceType,
-    resolve::{origin::ResolveOrigin, parse::Request, ExportUsage},
+    resolve::{ExportUsage, origin::ResolveOrigin, parse::Request},
     source::Source,
 };
 use turbopack_ecmascript::{

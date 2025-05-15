@@ -106,7 +106,7 @@ use crate::{
         analyse_ecmascript_module, async_module::OptionAsyncModule, esm::base::EsmAssetReferences,
     },
     side_effect_optimization::reference::EcmascriptModulePartReference,
-    simple_tree_shake::{get_module_export_usages, ModuleExportUsageInfo},
+    simple_tree_shake::{ModuleExportUsageInfo, get_module_export_usages},
     swc_comments::ImmutableComments,
     transform::remove_shebang,
 };

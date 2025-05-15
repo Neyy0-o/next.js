@@ -54,9 +54,9 @@ use turbopack_core::{
 pub use turbopack_css as css;
 pub use turbopack_ecmascript as ecmascript;
 use turbopack_ecmascript::{
+    EcmascriptOptions,
     references::external_module::{CachedExternalModule, CachedExternalType},
     tree_shake::asset::EcmascriptModulePartAsset,
-    EcmascriptOptions,
 };
 use turbopack_json::JsonModuleAsset;
 pub use turbopack_resolve::{resolve::resolve_options, resolve_options_context};

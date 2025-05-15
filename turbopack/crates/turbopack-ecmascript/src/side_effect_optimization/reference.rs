@@ -16,9 +16,9 @@ use super::{
     facade::module::EcmascriptModuleFacadeModule, locals::module::EcmascriptModuleLocalsModule,
 };
 use crate::{
-    chunk::EcmascriptChunkPlaceable, code_gen::CodeGeneration,
+    EcmascriptOptions, chunk::EcmascriptChunkPlaceable, code_gen::CodeGeneration,
     references::esm::base::ReferencedAsset, runtime_functions::TURBOPACK_IMPORT,
-    utils::module_id_to_lit, EcmascriptOptions,
+    utils::module_id_to_lit,
 };
 
 /// A reference to the [EcmascriptModuleLocalsModule] variant of an original
