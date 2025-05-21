@@ -86,7 +86,7 @@ use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::{
         AsyncModuleInfo, ChunkItem, ChunkType, ChunkableModule, ChunkingContext, EvaluatableAsset,
-        MergeableModule, MergeableModuleResult, MergeableModules, ModuleChunkItemIdExt, ModuleId,
+        MergeableModule, MergeableModules, MergeableModulesExposed, ModuleChunkItemIdExt, ModuleId,
     },
     compile_time_info::CompileTimeInfo,
     context::AssetContext,
@@ -737,7 +737,8 @@ impl MergeableModule for EcmascriptModuleAsset {
     #[turbo_tasks::function]
     async fn merge(
         self: Vc<Self>,
-        modules: Vc<MergeableModules>,
+        modules: Vc<MergeableModulesExposed>,
+        entries: Vc<MergeableModules>,
     ) -> Result<Vc<Box<dyn ChunkableModule>>> {
         Ok(Vc::upcast(*MergedEcmascriptModule::new(
             modules
@@ -749,6 +750,14 @@ impl MergeableModule for EcmascriptModuleAsset {
                             .context("expected EcmascriptAnalyzable")?,
                         *exposed,
                     ))
+                })
+                .collect::<Result<Vec<_>>>()?,
+            entries
+                .await?
+                .iter()
+                .map(|m| {
+                    ResolvedVc::try_sidecast::<Box<dyn EcmascriptAnalyzable>>(*m)
+                        .context("expected EcmascriptAnalyzable")
                 })
                 .collect::<Result<Vec<_>>>()?,
             self.options().to_resolved().await?,
@@ -1137,6 +1146,7 @@ impl EcmascriptModuleContent {
     pub async fn new_merged(
         modules: Vec<(ResolvedVc<Box<dyn EcmascriptAnalyzable>>, bool)>,
         module_options: Vec<Vc<EcmascriptModuleContentOptions>>,
+        entries: Vec<ResolvedVc<Box<dyn EcmascriptAnalyzable>>>,
     ) -> Result<Vc<Self>> {
         let modules = modules
             .into_iter()
@@ -1147,6 +1157,13 @@ impl EcmascriptModuleContent {
                 )
             })
             .collect::<FxIndexMap<_, _>>();
+        let entries = entries
+            .into_iter()
+            .map(|m| {
+                let m = ResolvedVc::try_sidecast::<Box<dyn EcmascriptChunkPlaceable>>(m).unwrap();
+                (m, modules.get_index_of(&m).unwrap())
+            })
+            .collect::<Vec<_>>();
 
         let globals_merged = Globals::default();
         let merged_ctxts = GLOBALS.set(&globals_merged, || {
@@ -1232,7 +1249,7 @@ impl EcmascriptModuleContent {
 
         // TODO properly merge ASTs:
         // - somehow merge the SourceMap struct
-        let merged_ast = merge_modules(contents, &merged_ctxts, &globals_merged).await?;
+        let merged_ast = merge_modules(contents, entries, &merged_ctxts, &globals_merged).await?;
         let content = CodeGenResult {
             program: merged_ast,
             source_map: Arc::new(SourceMap::default()),
@@ -1264,6 +1281,7 @@ async fn merge_modules(
         Mark,
         CodeGenResult,
     )>,
+    entries: Vec<(ResolvedVc<Box<dyn EcmascriptChunkPlaceable>>, usize)>,
     merged_ctxts: &'_ FxIndexMap<ResolvedVc<Box<dyn EcmascriptChunkPlaceable>>, SyntaxContext>,
     globals_merged: &'_ Globals,
 ) -> Result<Program> {
@@ -1323,12 +1341,16 @@ async fn merge_modules(
     };
 
     let mut inserted = FxHashSet::with_capacity_and_hasher(contents.len(), Default::default());
-    inserted.insert(contents.len() - 1);
+
+    inserted.extend(entries.iter().map(|(_, i)| *i));
 
     let mut merged_ast = swc_core::ecma::ast::Module {
         span: DUMMY_SP,
         shebang: None,
-        body: prepare_module(contents.last_mut().unwrap()),
+        body: entries
+            .iter()
+            .flat_map(|(_, i)| prepare_module(&mut contents[*i]))
+            .collect(),
     };
 
     // Replace inserted `__turbopack_merged_esm__(i);` statements with the corresponding ith-module
