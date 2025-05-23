@@ -23,7 +23,7 @@ foo(true);
 "use strict";
 
 __turbopack_context__.s({
-"bar": (()=>bar)
+"bar": ()=>bar
 });
 function bar(value) {
 console.assert(value);
