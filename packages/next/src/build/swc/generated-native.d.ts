@@ -344,7 +344,7 @@ export interface NapiIssue {
   detail?: any
   source?: NapiIssueSource
   documentationLink: string
-  importTraces: Array<any>
+  importTraces: any
 }
 export interface NapiIssueSource {
   source: NapiSource
