@@ -177,11 +177,10 @@ export function runErrorRecoveryHmrTest(nextConfig: {
 
        Example import traces:
          #1:
-           pages/hmr/about2.js [entrypoint]
+           ./pages/hmr/about2.js [ssr] [entrypoint]
 
          #2:
-           pages/hmr/about2.js [ssr]
-           node_modules/.pnpm/next@file+..+next-repo-ac6384c13797ba1a9b5e9beac5adf9f9aad2768b421d003d24f66ca57cbc0838_4c18d07652a7b17b5d03441c6a186bb1/node_modules/next/dist/esm/build/templates/pages.js [generated] [ssr] [entrypoint]"
+           ./pages/hmr/about2.js [entrypoint]"
       `)
     } else if (process.env.NEXT_RSPACK) {
       expect(trimEndMultiline(source)).toMatchInlineSnapshot(`
@@ -623,15 +622,13 @@ export function runErrorRecoveryHmrTest(nextConfig: {
 
          Example import traces:
            #1:
-             components/parse-error.js [ssr]
-             pages/hmr/about9.js [ssr]
-             node_modules/.pnpm/next@file+..+next-repo-ac6384c13797ba1a9b5e9beac5adf9f9aad2768b421d003d24f66ca57cbc0838_4c18d07652a7b17b5d03441c6a186bb1/node_modules/next/dist/esm/build/templates/pages.js [generated] [ssr] [entrypoint]
+             ./components/parse-error.js [ssr]
+             ./pages/hmr/about9.js [ssr] [entrypoint]
 
            #2:
-             components/parse-error.js [client]
-             pages/hmr/about9.js [client]
-             [next]/entry/page-loader.ts [generated] [client]
-             pages/hmr/about9.js [entrypoint]"
+             ./components/parse-error.js [client]
+             ./pages/hmr/about9.js [client]
+             ./pages/hmr/about9.js [entrypoint]"
         `)
       } else if (process.env.NEXT_RSPACK) {
         expect(trimEndMultiline(next.normalizeTestDirContent(redboxSource)))

@@ -27,7 +27,7 @@ use turbo_tasks_fs::FileSystemPath;
 
 use crate::{
     chunk::{AsyncModuleInfo, ChunkingContext, ChunkingType},
-    issue::{CollectibleModuleGraph, ImportTrace, ImportTraces, Issue},
+    issue::{CollectibleModuleGraph, ImportTrace, Issue},
     module::Module,
     module_graph::{
         async_module_info::{AsyncModulesInfo, compute_async_module_info},
@@ -712,19 +712,17 @@ impl SingleModuleGraph {
     pub async fn compute_import_traces_for_issues(
         &self,
         issues: &AutoSet<ResolvedVc<Box<dyn Issue>>>,
-    ) -> Result<FxHashMap<ResolvedVc<Box<dyn Issue>>, Vc<ImportTraces>>> {
+    ) -> Result<FxHashMap<ResolvedVc<Box<dyn Issue>>, Vec<ImportTrace>>> {
         let issue_paths = issues
             .iter()
             .map(|issue| async move { Ok((*issue.file_path().await?).clone()) })
             .try_join()
             .await?;
-        let mut file_path_to_traces: FxHashMap<FileSystemPath, Vc<ImportTraces>> =
+        let mut file_path_to_traces: FxHashMap<FileSystemPath, Vec<ImportTrace>> =
             FxHashMap::with_capacity_and_hasher(issue_paths.len(), Default::default());
         // initialize an empty vec for each path we care about
         for issue in &issue_paths {
-            file_path_to_traces
-                .entry(issue.clone())
-                .or_insert(ImportTraces::empty());
+            file_path_to_traces.entry(issue.clone()).or_default();
         }
 
         {
@@ -768,45 +766,35 @@ impl SingleModuleGraph {
                     ) else {
                         unreachable!("there must be a path to a root");
                     };
-                    // Represent the path just using filepaths.
-                    // TODO: consider including the full module specifier for the root
-                    // TODO: consider omitting the path altogether when the file is a root
+                    // Represent the path as a sequence of AssetIdentsthe path just using filepaths.
                     // TODO: consider hinting at various transitions (e.g. was this an
                     // import/require/dynamic-import?)
                     let path = path
                         .into_iter()
                         .map(async |n| {
-                            Ok((*self
+                            Ok(self
                                 .graph
                                 .node_weight(n)
                                 .unwrap()
                                 .module()
                                 .ident()
-                                .trace_display_name()
-                                .await?)
+                                .await?
                                 .clone())
                         })
                         .try_join()
                         .await?;
-                    *entry.get_mut() = entry.get().push(ImportTrace(path).cell());
+                    entry.get_mut().push(path);
                 }
             }
         }
-        let mut issue_to_traces: FxHashMap<ResolvedVc<Box<dyn Issue>>, Vc<ImportTraces>> =
+        let mut issue_to_traces: FxHashMap<ResolvedVc<Box<dyn Issue>>, Vec<ImportTrace>> =
             FxHashMap::with_capacity_and_hasher(issues.len(), Default::default());
         // Map filepaths back to issues
         // We can do this by zipping the issue_paths with the issues since they are in the same
         // order.
         for (path, issue) in issue_paths.iter().zip(issues) {
             if let Some(traces) = file_path_to_traces.get(path) {
-                match issue_to_traces.entry(*issue) {
-                    Entry::Occupied(mut entry) => {
-                        *entry.get_mut() = entry.get().concat(*traces);
-                    }
-                    Entry::Vacant(entry) => {
-                        entry.insert(*traces);
-                    }
-                };
+                issue_to_traces.insert(*issue, traces.clone());
             }
         }
         Ok(issue_to_traces)

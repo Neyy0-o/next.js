@@ -183,6 +183,12 @@ impl AssetIdent {
     }
 
     #[turbo_tasks::function]
+    pub fn with_asset(&self, key: ResolvedVc<RcStr>, asset: ResolvedVc<AssetIdent>) -> Vc<Self> {
+        let mut this = self.clone();
+        this.add_asset(key, asset);
+        Self::new(Value::new(this))
+    }
+    #[turbo_tasks::function]
     pub async fn rename_as(&self, pattern: RcStr) -> Result<Vc<Self>> {
         let mut this = self.clone();
         this.rename_as_ref(&pattern).await?;

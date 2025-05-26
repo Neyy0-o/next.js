@@ -21,11 +21,12 @@ use turbo_tasks::{
     TransientInstance, TransientValue, TryJoinIterExt, Upcast, ValueToString, Vc, emit,
     trace::TraceRawVcs,
 };
-use turbo_tasks_fs::{FileContent, FileLine, FileLinesContent, FileSystemPath};
+use turbo_tasks_fs::{FileContent, FileLine, FileLinesContent, FileSystem, FileSystemPath};
 use turbo_tasks_hash::{DeterministicHash, Xxh3Hash64Hasher};
 
 use crate::{
     asset::{Asset, AssetContent},
+    ident::AssetIdent,
     module_graph::SingleModuleGraph,
     source::Source,
     source_map::{GenerateSourceMap, SourceMap, TokenWithSource},
@@ -150,50 +151,14 @@ pub trait Issue {
     fn source(self: Vc<Self>) -> Vc<OptionIssueSource> {
         Vc::cell(None)
     }
-
-    async fn into_plain(
-        self: Vc<Self>,
-        import_traces: Vc<ImportTraces>,
-        processing_path: Vc<OptionIssueProcessingPathItems>,
-    ) -> Result<Vc<PlainIssue>> {
-        let description = match *self.description().await? {
-            Some(description) => Some((*description.await?).clone()),
-            None => None,
-        };
-        let detail = match *self.detail().await? {
-            Some(detail) => Some((*detail.await?).clone()),
-            None => None,
-        };
-
-        Ok(PlainIssue {
-            severity: *self.severity().await?,
-            file_path: self.file_path().to_string().owned().await?,
-            stage: self.stage().owned().await?,
-            title: self.title().owned().await?,
-            description,
-            detail,
-            documentation_link: self.documentation_link().owned().await?,
-            source: {
-                if let Some(s) = &*self.source().await? {
-                    Some(s.into_plain().await?)
-                } else {
-                    None
-                }
-            },
-            processing_path: processing_path.into_plain().await?,
-            import_traces: import_traces.into_plain().await?,
-        }
-        .cell())
-    }
 }
-
-#[turbo_tasks::value]
-pub struct OptionImportTraces(Vec<Option<ImportTrace>>);
 
 // A collectible marker trait that wraps a `SingleModuleGraph`
 // It should be downcast access the graph.
 #[turbo_tasks::value_trait]
 pub trait CollectibleModuleGraph {}
+
+pub type ImportTrace = Vec<ReadRef<AssetIdent>>;
 
 #[turbo_tasks::value_trait]
 trait IssueProcessingPath {
@@ -399,9 +364,9 @@ impl CapturedIssues {
     }
 
     // Returns all the issues as formatted `PlainIssues`.
-    pub async fn get_plain_issues(&self) -> Result<Vec<ReadRef<PlainIssue>>> {
-        let issue_to_traces = {
-            let graphs = self
+    pub async fn get_plain_issues(&self) -> Result<Vec<PlainIssue>> {
+        let mut issue_to_traces = {
+            let mut graphs = self
                 .graphs
                 .iter()
                 .map(|&g| async move {
@@ -416,14 +381,15 @@ impl CapturedIssues {
                 .try_join()
                 .await?;
 
-            // Merge them all
-            let mut issue_to_traces: FxHashMap<ResolvedVc<Box<dyn Issue>>, Vc<ImportTraces>> =
+            // Merge the maps
+            let mut issue_to_traces: FxHashMap<ResolvedVc<Box<dyn Issue>>, Vec<ImportTrace>> =
                 FxHashMap::with_capacity_and_hasher(self.issues.len(), Default::default());
-            for graph in graphs {
-                for (issue, traces) in graph {
+            for graph in graphs.iter_mut() {
+                // Drain so we can transfer ownership into the new map.
+                for (issue, mut traces) in graph.drain() {
                     match issue_to_traces.entry(issue) {
                         Entry::Occupied(mut entry) => {
-                            *entry.get_mut() = entry.get().concat(traces);
+                            entry.get_mut().append(&mut traces);
                         }
                         Entry::Vacant(entry) => {
                             entry.insert(traces);
@@ -437,18 +403,15 @@ impl CapturedIssues {
         let mut list = self
             .issues
             .iter()
-            .map(|&issue| {
-                let issue_to_traces = &issue_to_traces;
+            .map(|issue| {
+                let traces = issue_to_traces.remove(issue).unwrap_or(Vec::new());
                 async move {
-                    let import_traces = issue_to_traces.get(&issue).cloned().unwrap();
+                    let traces = into_plain(traces).await?;
                     #[cfg(feature = "issue_path")]
-                    return issue
-                        .into_plain(import_traces, self.processing_path.shortest_path(*issue))
-                        .await;
+                    let processing_path = self.processing_path.shortest_path(**issue);
                     #[cfg(not(feature = "issue_path"))]
-                    return issue
-                        .into_plain(import_traces, OptionIssueProcessingPathItems::none())
-                        .await;
+                    let processing_path = OptionIssueProcessingPathItems::none();
+                    PlainIssue::from_issue(*issue, traces, processing_path).await
                 }
             })
             .try_join()
@@ -656,69 +619,95 @@ pub struct OptionIssueSource(Option<IssueSource>);
 #[turbo_tasks::value(transparent)]
 pub struct OptionStyledString(Option<ResolvedVc<StyledString>>);
 
-#[turbo_tasks::value(transparent, shared)]
-#[derive(Clone, Debug, PartialOrd, Ord)]
-pub struct ImportTrace(pub Vec<RcStr>);
+// A structured reference to a file with module level details for displaying in an import trace
+#[derive(Serialize, PartialEq, Eq, PartialOrd, Ord, Clone, Debug, TraceRawVcs, NonLocalValue)]
+#[serde(rename_all = "camelCase")]
+pub struct PlainTraceItem {
+    // The name of the filesystem
+    pub fs_name: String,
+    // The root path of the filesystem, for constructing links
+    pub root_path: String,
+    // The path of the file, relative to the filesystem root
+    pub path: String,
+    // An optional label attached to the module that clarifies where in the module grpah it is.
+    pub layer: Option<String>,
+}
 
-#[turbo_tasks::value(transparent, shared)]
-pub struct ImportTraces(pub Vec<ResolvedVc<ImportTrace>>);
-
-#[turbo_tasks::value_impl]
-impl ImportTraces {
-    #[turbo_tasks::function]
-    pub fn empty() -> Vc<Self> {
-        Self(Vec::new()).cell()
-    }
-
-    #[turbo_tasks::function]
-    pub async fn concat(&self, other: Vc<ImportTraces>) -> Result<Vc<Self>> {
-        let other_items = &*other.await?;
-        Ok(Self([self.0.clone(), other_items.clone()].concat()).cell())
-    }
-
-    #[turbo_tasks::function]
-    pub fn push(&self, other: ResolvedVc<ImportTrace>) -> Result<Vc<Self>> {
-        Ok(Self([self.0.clone(), vec![other]].concat()).cell())
-    }
-
-    // Flatten this set of traces into a simpler format for formatting.
-    #[turbo_tasks::function]
-    pub async fn into_plain(&self) -> Result<Vc<PlainImportTraces>> {
-        let mut plain_traces = self
-            .0
-            .iter()
-            .map(|trace| async move { Ok((*trace.await?).clone()) })
-            .try_join()
-            .await?;
-        // Sort so the shortest traces come first
-        plain_traces.sort_by_key(|t| t.len());
-        // Now see if there are any overlaps
-        // If two of the traces overlap that means one is a suffix of another one.  Because we are
-        // computing shortest paths in the same graph and the shortest path algorithm we use is
-        // deterministic.
-        // Technically this is a quadratic algorithm since we need to compare each trace with all
-        // subsequent traces, however there are rarely more than 3 traces and certainly never more
-        // than 10.
-        if plain_traces.len() > 1 {
-            let mut i = 0;
-            while i < plain_traces.len() - 1 {
-                let mut j = plain_traces.len() - 1;
-                while j > i {
-                    if plain_traces[j].ends_with(&plain_traces[i]) {
-                        plain_traces.remove(j);
-                    }
-                    j -= 1;
-                }
-                i += 1;
-            }
-        }
-        Ok(PlainImportTraces(plain_traces).cell())
+impl PlainTraceItem {
+    async fn from_asset(asset: &ReadRef<AssetIdent>) -> Result<Self> {
+        let fs_path = asset.path.await?;
+        let fs_name = fs_path.fs.to_string().await?.to_string();
+        let root_path = fs_path.fs.root().await?.path.to_string();
+        let path = fs_path.path.to_string();
+        let layer = match asset.layer {
+            Some(layer) => Some(layer.await?.to_string()),
+            None => None,
+        };
+        Ok(Self {
+            fs_name,
+            root_path,
+            path,
+            layer,
+        })
     }
 }
 
-#[turbo_tasks::value(transparent, serialization = "none")]
-#[derive(Clone, Debug, DeterministicHash, PartialOrd, Ord)]
-pub struct PlainImportTraces(pub Vec<Vec<RcStr>>);
+pub type PlainTrace = Vec<PlainTraceItem>;
+
+// Flatten this set of traces into a simpler format for formatting.
+async fn into_plain(traces: Vec<Vec<ReadRef<AssetIdent>>>) -> Result<Vec<PlainTrace>> {
+    let mut plain_traces = traces
+        .iter()
+        .map(|trace| {
+            trace
+                .iter()
+                .filter(|asset| {
+                    // If there are nested assets, this is a synthetic module which is likely to be
+                    // confusing/distracting.  Just skip it.
+                    asset.assets.is_empty()
+                })
+                .map(PlainTraceItem::from_asset)
+                .try_join()
+        })
+        .try_join()
+        .await?;
+
+    // Sort so the shortest traces come first
+    plain_traces.sort_by_key(|t| t.len());
+    // trim any empty traces
+    while let Some(trace) = plain_traces.first()
+        && trace.is_empty()
+    {
+        plain_traces.remove(0);
+    }
+    // Now see if there are any overlaps
+    // If two of the traces overlap that means one is a suffix of another one.  Because we are
+    // computing shortest paths in the same graph and the shortest path algorithm we use is
+    // deterministic.
+    // Technically this is a quadratic algorithm since we need to compare each trace with all
+    // subsequent traces, however there are rarely more than 3 traces and certainly never more
+    // than 10.
+    if plain_traces.len() > 1 {
+        let mut i = 0;
+        while i < plain_traces.len() - 1 {
+            let mut j = plain_traces.len() - 1;
+            while j > i {
+                if plain_traces[j].ends_with(&plain_traces[i]) {
+                    // Remove the longer trace.
+                    // This typically happens due to things like server->client transitions where
+                    // the same file appears multiple times under different modules identifiers.
+                    // On the one hand the shorter trace is simpler, on the other hand the longer
+                    // trace might be more 'interesting' and even relevant.
+                    plain_traces.remove(j);
+                }
+                j -= 1;
+            }
+            i += 1;
+        }
+    }
+
+    Ok(plain_traces)
+}
 
 #[turbo_tasks::value(shared, serialization = "none")]
 #[derive(Clone, Debug, PartialOrd, Ord, DeterministicHash, Serialize)]
@@ -762,8 +751,7 @@ impl Display for IssueStage {
     }
 }
 
-#[turbo_tasks::value(serialization = "none")]
-#[derive(Clone, Debug, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, TraceRawVcs, NonLocalValue)]
 pub struct PlainIssue {
     pub severity: IssueSeverity,
     pub stage: IssueStage,
@@ -777,7 +765,7 @@ pub struct PlainIssue {
 
     pub source: Option<PlainIssueSource>,
     pub processing_path: ReadRef<PlainIssueProcessingPath>,
-    pub import_traces: ReadRef<PlainImportTraces>,
+    pub import_traces: Vec<PlainTrace>,
 }
 
 fn hash_plain_issue(issue: &PlainIssue, hasher: &mut Xxh3Hash64Hasher, full: bool) {
@@ -816,6 +804,40 @@ impl PlainIssue {
         let mut hasher = Xxh3Hash64Hasher::new();
         hash_plain_issue(self, &mut hasher, full);
         hasher.finish()
+    }
+
+    pub async fn from_issue(
+        issue: ResolvedVc<Box<dyn Issue>>,
+        import_traces: Vec<PlainTrace>,
+        processing_path: Vc<OptionIssueProcessingPathItems>,
+    ) -> Result<Self> {
+        let description: Option<StyledString> = match *issue.description().await? {
+            Some(description) => Some((*description.await?).clone()),
+            None => None,
+        };
+        let detail = match *issue.detail().await? {
+            Some(detail) => Some((*detail.await?).clone()),
+            None => None,
+        };
+
+        Ok(Self {
+            severity: *issue.severity().await?,
+            file_path: issue.file_path().to_string().owned().await?,
+            stage: issue.stage().owned().await?,
+            title: issue.title().owned().await?,
+            description,
+            detail,
+            documentation_link: issue.documentation_link().owned().await?,
+            source: {
+                if let Some(s) = &*issue.source().await? {
+                    Some(s.into_plain().await?)
+                } else {
+                    None
+                }
+            },
+            processing_path: processing_path.into_plain().await?,
+            import_traces,
+        })
     }
 }
 

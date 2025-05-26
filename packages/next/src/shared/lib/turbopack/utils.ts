@@ -1,5 +1,6 @@
 import type {
   Issue,
+  PlainTraceItem,
   StyledString,
   TurbopackResult,
 } from '../../../build/swc/types'
@@ -199,15 +200,15 @@ export function formatIssue(issue: Issue) {
   // }
 
   if (importTraces?.length) {
-    // This is the same logic as in turbopack/crates/turbopack-core/src/module_graph/mod.rs
+    // This is the same logic as in turbopack/crates/turbopack-cli-utils/src/issue.rs
     if (importTraces.length > 1) {
       // We end up with multiple traces when the file with the error is reachable from multiple different entry points (e.g. ssr, client)
       message += 'Example import traces:\n'
       for (let i = 0; i < importTraces.length; i++) {
-        message += `  #${i + 1}:\n${importTraces[i].map((item) => `    ${item}`).join('\n')} [entrypoint]\n\n`
+        message += `  #${i + 1}:\n${formatIssueTraceItems(importTraces[i], '    ')}\n\n`
       }
     } else {
-      message += `Example import trace:\n${importTraces[0].map((item) => `  ${item}`).join('\n')} [entrypoint]\n\n`
+      message += `Example import trace:\n${formatIssueTraceItems(importTraces[0], '  ')}\n\n`
     }
   }
   if (documentationLink) {
@@ -215,6 +216,30 @@ export function formatIssue(issue: Issue) {
   }
 
   return message
+}
+function formatIssueTraceItems(
+  items: PlainTraceItem[],
+  indent: string
+): string {
+  return items
+    .map((item, index, array) => {
+      let r = indent
+      if (item.fsName !== 'project') {
+        r += `[${item.fsName}]`
+      } else {
+        // This is consistent with webpack's output
+        r += './'
+      }
+      r += item.path
+      if (item.layer) {
+        r += ` [${item.layer}]`
+      }
+      if (index === array.length - 1) {
+        r += ' [entrypoint]'
+      }
+      return r
+    })
+    .join('\n')
 }
 
 export function isRelevantWarning(issue: Issue): boolean {

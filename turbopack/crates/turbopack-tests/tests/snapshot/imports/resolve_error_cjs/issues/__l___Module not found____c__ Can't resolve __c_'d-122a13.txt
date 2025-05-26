@@ -15,4 +15,4 @@ error - [resolve] [project]/turbopack/crates/turbopack-tests/tests/snapshot/impo
   | Type of request: commonjs request
   | 
   Example import trace:
-    turbopack/crates/turbopack-tests/tests/snapshot/imports/resolve_error_cjs/input/index.js [test] [entrypoint]
+    ./turbopack/crates/turbopack-tests/tests/snapshot/imports/resolve_error_cjs/input/index.js [test] [entrypoint]

@@ -16,7 +16,7 @@ use turbo_tasks::{RawVc, ReadRef, TransientInstance, TransientValue, Vc};
 use turbo_tasks_fs::{FileLinesContent, source_context::get_source_context};
 use turbopack_core::issue::{
     CapturedIssues, IssueReporter, IssueSeverity, PlainIssue, PlainIssueProcessingPathItem,
-    PlainIssueSource, StyledString,
+    PlainIssueSource, PlainTraceItem, StyledString,
 };
 
 use crate::source_context::format_source_context_lines;
@@ -172,23 +172,45 @@ pub fn format_issue(
     }
     let traces = &*plain_issue.import_traces;
     if !traces.is_empty() {
+        fn format_trace_items(out: &mut String, indent: &'static str, items: &[PlainTraceItem]) {
+            let mut it = items.iter().peekable();
+            while let Some(item) = it.next() {
+                out.push_str(indent);
+                // We want to format the filepath but with a few caveats
+                // - if it is part of the `[project]` filesystem, omit the fs name
+                // - format the label at the end
+                // - if it is the last item add the special marker `[entrypoint]` to help clarify
+                //   that this is an application entry point
+                // TODO(lukesandberg): some formatting could be useful. We could use colors,
+                // bold/faint, links?
+                if item.fs_name != "project" {
+                    out.push('[');
+                    out.push_str(&item.fs_name);
+                    out.push(']');
+                } else {
+                    // This is consistent with webpack's output
+                    out.push_str("./");
+                }
+                out.push_str(&item.path);
+                if let Some(ref label) = item.layer {
+                    out.push_str(" [");
+                    out.push_str(label);
+                    out.push(']');
+                }
+                if it.peek().is_none() {
+                    out.push_str(" [entrypoint]");
+                }
+                out.push('\n');
+            }
+        }
         if traces.len() == 1 {
             writeln!(styled_issue, "Example import trace:").unwrap();
-            for line in &traces[0] {
-                writeln!(styled_issue, "  {line}").unwrap();
-            }
-            // tag the last element as an entrypoint for clarity
-            assert_eq!(Some('\n'), styled_issue.pop());
-            writeln!(styled_issue, " [entrypoint]\n").unwrap();
+            format_trace_items(&mut styled_issue, "  ", &traces[0]);
         } else {
-            writeln!(styled_issue, "Example import traces:").unwrap();
+            styled_issue.push_str("Example import traces:\n");
             for (index, trace) in traces.iter().enumerate() {
                 writeln!(styled_issue, "#{}:", index + 1).unwrap();
-                for line in trace {
-                    writeln!(styled_issue, "    {line}").unwrap();
-                }
-                assert_eq!(Some('\n'), styled_issue.pop());
-                writeln!(styled_issue, " [entrypoint]\n").unwrap();
+                format_trace_items(&mut styled_issue, "    ", trace);
             }
         }
     }
