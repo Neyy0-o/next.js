@@ -437,6 +437,7 @@ pub async fn get_client_chunking_context(
     minify: Vc<bool>,
     source_maps: Vc<bool>,
     no_mangling: Vc<bool>,
+    scope_hoisting: Vc<bool>,
 ) -> Result<Vc<Box<dyn ChunkingContext>>> {
     let next_mode = mode.await?;
     let mut builder = BrowserChunkingContext::builder(
@@ -491,7 +492,7 @@ pub async fn get_client_chunking_context(
                 },
             )
             .use_content_hashing(ContentHashing::Direct { length: 16 })
-            .module_merging(true);
+            .module_merging(*scope_hoisting.await?);
     }
 
     Ok(Vc::upcast(builder.build()))
