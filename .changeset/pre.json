@@ -1,0 +1,35 @@
+{
+  "mode": "pre",
+  "tag": "canary",
+  "initialVersions": {
+    "create-next-app": "15.4.0-canary.52",
+    "eslint-config-next": "15.4.0-canary.52",
+    "@next/eslint-plugin-next": "15.4.0-canary.52",
+    "@next/font": "15.4.0-canary.52",
+    "next": "15.4.0-canary.52",
+    "@next/bundle-analyzer": "15.4.0-canary.52",
+    "@next/codemod": "15.4.0-canary.52",
+    "@next/env": "15.4.0-canary.52",
+    "@next/mdx": "15.4.0-canary.52",
+    "@next/plugin-storybook": "15.4.0-canary.52",
+    "@next/polyfill-module": "15.4.0-canary.52",
+    "@next/polyfill-nomodule": "15.4.0-canary.52",
+    "next-rspack": "15.4.0-canary.52",
+    "@next/swc": "15.4.0-canary.52",
+    "@next/react-refresh-utils": "15.4.0-canary.52",
+    "@next/third-parties": "15.4.0-canary.52"
+  },
+  "changesets": [
+    "dry-roses-nail",
+    "giant-bushes-sink",
+    "loose-cows-pump",
+    "lovely-bulldogs-dress",
+    "seven-seas-run",
+    "shaggy-owls-visit",
+    "shaggy-pears-tell",
+    "shy-impalas-add",
+    "spotty-hotels-train",
+    "swift-socks-find",
+    "tricky-planes-worry"
+  ]
+}
