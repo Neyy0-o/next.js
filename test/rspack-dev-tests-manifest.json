@@ -2072,14 +2072,14 @@
     "runtimeError": false
   },
   "test/development/acceptance-app/undefined-default-export.test.ts": {
-    "passed": [
+    "passed": [],
+    "failed": [
       "Undefined default export should error if layout component does not have default export",
       "Undefined default export should error if not-found component does not have default export when trigger not-found boundary",
       "Undefined default export should error if page component does not have default export",
       "Undefined default export should error when page component export is not valid",
       "Undefined default export should error when page component export is not valid on initial load"
     ],
-    "failed": [],
     "pending": [],
     "flakey": [],
     "runtimeError": false
@@ -2689,7 +2689,8 @@
     "runtimeError": false
   },
   "test/development/app-dir/ssr-in-rsc/ssr-in-rsc.test.ts": {
-    "passed": [
+    "passed": [],
+    "failed": [
       "react-dom/server in React Server environment explicit react-dom/server.browser usage in app code",
       "react-dom/server in React Server environment explicit react-dom/server.browser usage in library code",
       "react-dom/server in React Server environment explicit react-dom/server.edge usage in app code",
@@ -2701,7 +2702,6 @@
       "react-dom/server in React Server environment implicit react-dom/server.node usage in app code",
       "react-dom/server in React Server environment implicit react-dom/server.node usage in library code"
     ],
-    "failed": [],
     "pending": [],
     "flakey": [],
     "runtimeError": false
@@ -2740,11 +2740,11 @@
     "runtimeError": false
   },
   "test/development/app-dir/use-cache-errors/use-cache-errors.test.ts": {
-    "passed": [
+    "passed": [],
+    "failed": [
       "use-cache-errors should not show a false-positive compiler error about a misplaced \"use cache\" directive",
       "use-cache-errors should show a runtime error when calling the incorrectly used cache function"
     ],
-    "failed": [],
     "pending": [],
     "flakey": [],
     "runtimeError": false
