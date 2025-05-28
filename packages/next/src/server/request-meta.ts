@@ -7,6 +7,7 @@ import type { CloneableBody } from './body-streams'
 import type { RouteMatch } from './route-matches/route-match'
 import type { NEXT_RSC_UNION_QUERY } from '../client/components/app-router-headers'
 import type { ServerComponentsHmrCache } from './response-cache'
+import type { PagesDevOverlayType } from '../client/components/react-dev-overlay/pages/pages-dev-overlay'
 
 // FIXME: (wyattjoh) this is a temporary solution to allow us to pass data between bundled modules
 export const NEXT_REQUEST_META = Symbol.for('NextInternalRequestMeta')
@@ -88,6 +89,17 @@ export interface RequestMeta {
    * True when the request is for the flight data.
    */
   isRSCRequest?: true
+
+  /**
+   * A search param set by the Next.js client when performing RSC requests.
+   * Because some CDNs do not vary their cache entries on our custom headers,
+   * this search param represents a hash of the header values. For any cached
+   * RSC request, we should verify that the hash matches before responding.
+   * Otherwise this can lead to cache poisoning.
+   * TODO: Consider not using custom request headers at all, and instead encode
+   * everything into the search param.
+   */
+  cacheBustingSearchParam?: string
 
   /**
    * True when the request is for the `/_next/data` route using the pages
@@ -208,6 +220,11 @@ export interface RequestMeta {
    * The AMP validator to use in development
    */
   ampValidator?: (html: string, pathname: string) => Promise<void>
+
+  /**
+   * ErrorOverlay component to use in development for pages router
+   */
+  PagesErrorDebug?: PagesDevOverlayType
 }
 
 /**
