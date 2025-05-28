@@ -6,11 +6,9 @@ import stripAnsi from 'next/dist/compiled/strip-ansi'
 import formatWebpackMessages from '../utils/format-webpack-messages'
 import { useRouter } from '../../navigation'
 import { REACT_REFRESH_FULL_RELOAD, reportInvalidHmrMessage } from '../shared'
-import {
-  AppDevOverlay,
-  AppDevOverlayErrorBoundary,
-  dispatcher,
-} from './app-dev-overlay'
+import { AppDevOverlayErrorBoundary } from './app-dev-overlay-error-boundary'
+// @ts-expect-error -- TODO: Dedicated entrypoint instead of resource query
+import { dispatcher } from './app-dev-overlay?next-devtools-app-bridge' with { 'turbopack-transition': 'nextjs-devtools-app-frontend' }
 import { useErrorHandler } from '../../errors/use-error-handler'
 import { RuntimeErrorHandler } from '../../errors/runtime-error-handler'
 import {
@@ -533,7 +531,6 @@ export default function HotReload({
 
   return (
     <>
-      <AppDevOverlay />
       <AppDevOverlayErrorBoundary globalError={globalError}>
         {children}
       </AppDevOverlayErrorBoundary>

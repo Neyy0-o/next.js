@@ -14,100 +14,15 @@ import {
   ACTION_VERSION_INFO,
   useErrorOverlayReducer,
 } from '../shared'
-import type { GlobalErrorComponent } from '../../global-error'
 
-import { useEffect, useInsertionEffect } from 'react'
-import { AppDevOverlayErrorBoundary as AppDevOverlayErrorBoundaryImpl } from './app-dev-overlay-error-boundary'
+import { useInsertionEffect } from 'react'
+import { createRoot } from 'react-dom/client'
 import { FontStyles } from '../font/font-styles'
 import type { DebugInfo } from '../types'
 import { DevOverlay } from '../ui/dev-overlay'
-import { getComponentStack, getOwnerStack } from '../../errors/stitched-error'
-import { handleClientError } from '../../errors/use-error-handler'
-import { isNextRouterError } from '../../is-next-router-error'
-import { MISSING_ROOT_TAGS_ERROR } from '../../../../shared/lib/errors/constants'
+
 import type { DevIndicatorServerState } from '../../../../server/dev/dev-indicator-server-state'
 import type { VersionInfo } from '../../../../server/dev/parse-version-info'
-
-function readSsrError(): (Error & { digest?: string }) | null {
-  if (typeof document === 'undefined') {
-    return null
-  }
-
-  const ssrErrorTemplateTag = document.querySelector(
-    'template[data-next-error-message]'
-  )
-  if (ssrErrorTemplateTag) {
-    const message: string = ssrErrorTemplateTag.getAttribute(
-      'data-next-error-message'
-    )!
-    const stack = ssrErrorTemplateTag.getAttribute('data-next-error-stack')
-    const digest = ssrErrorTemplateTag.getAttribute('data-next-error-digest')
-    const error = new Error(message)
-    if (digest) {
-      ;(error as any).digest = digest
-    }
-    // Skip Next.js SSR'd internal errors that which will be handled by the error boundaries.
-    if (isNextRouterError(error)) {
-      return null
-    }
-    error.stack = stack || ''
-    return error
-  }
-
-  return null
-}
-
-// Needs to be in the same error boundary as the shell.
-// If it commits, we know we recovered from an SSR error.
-// If it doesn't commit, we errored again and React will take care of error reporting.
-function ReplaySsrOnlyErrors({
-  onBlockingError,
-}: {
-  onBlockingError: () => void
-}) {
-  if (process.env.NODE_ENV !== 'production') {
-    // Need to read during render. The attributes will be gone after commit.
-    const ssrError = readSsrError()
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useEffect(() => {
-      if (ssrError !== null) {
-        // TODO(veil): Include original Owner Stack (NDX-905)
-        // TODO(veil): Mark as recoverable error
-        // TODO(veil): console.error
-        handleClientError(ssrError)
-
-        // If it's missing root tags, we can't recover, make it blocking.
-        if (ssrError.digest === MISSING_ROOT_TAGS_ERROR) {
-          onBlockingError()
-        }
-      }
-    }, [ssrError, onBlockingError])
-  }
-
-  return null
-}
-
-export function AppDevOverlayErrorBoundary({
-  globalError,
-  children,
-}: {
-  globalError: [GlobalErrorComponent, React.ReactNode]
-  children: React.ReactNode
-}) {
-  function openOverlay() {
-    dispatcher.openErrorOverlay()
-  }
-
-  return (
-    <AppDevOverlayErrorBoundaryImpl
-      globalError={globalError}
-      onError={openOverlay}
-    >
-      <ReplaySsrOnlyErrors onBlockingError={openOverlay} />
-      {children}
-    </AppDevOverlayErrorBoundaryImpl>
-  )
-}
 
 export interface Dispatcher {
   onBuildOk(): void
@@ -209,7 +124,13 @@ function replayQueuedEvents(dispatch: NonNullable<typeof maybeDispatch>) {
   }
 }
 
-export function AppDevOverlay() {
+export function AppDevOverlay({
+  getComponentStack,
+  getOwnerStack,
+}: {
+  getComponentStack: (error: Error) => string | undefined
+  getOwnerStack: (error: Error) => string | null | undefined
+}) {
   const [state, dispatch] = useErrorOverlayReducer(
     'app',
     getComponentStack,
@@ -219,12 +140,18 @@ export function AppDevOverlay() {
   useInsertionEffect(() => {
     maybeDispatch = dispatch
 
-    replayQueuedEvents(dispatch)
+    // Can't schedule updates from useInsertionEffect, so we need to defer.
+    // Could move this into a passive Effect but we don't want replaying when
+    // we reconnect.
+    const replayTimeout = setTimeout(() => {
+      replayQueuedEvents(dispatch)
+    })
 
     return () => {
       maybeDispatch = null
+      clearTimeout(replayTimeout)
     }
-  })
+  }, [])
 
   return (
     <>
@@ -233,4 +160,29 @@ export function AppDevOverlay() {
       <DevOverlay state={state} dispatch={dispatch} />
     </>
   )
+}
+
+let isMounted = false
+export function renderAppDevOverlay(
+  getComponentStack: (error: Error) => string | undefined,
+  getOwnerStack: (error: Error) => string | null | undefined
+): void {
+  if (!isMounted) {
+    // TODO: nextjs-portal
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const root = createRoot(container)
+
+    // TODO: Dedicate error boundary or root error callbacks?
+    // At least it won't unmount any user code if it errors.
+    root.render(
+      <AppDevOverlay
+        getComponentStack={getComponentStack}
+        getOwnerStack={getOwnerStack}
+      />
+    )
+
+    isMounted = true
+  }
 }

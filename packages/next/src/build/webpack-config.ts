@@ -1356,6 +1356,27 @@ export default async function getBaseWebpackConfig(
     },
     module: {
       rules: [
+        // Get isolated react-dom instance for NDT.
+        {
+          layer: 'nextjs-devtools-app-frontend',
+          // TODO: Separate entrypoints instead to avoid resource queries which require knowing about them and addition type gymnastics.
+          resourceQuery: /next-devtools-app-bridge/,
+        },
+        {
+          issuerLayer: 'nextjs-devtools-app-frontend',
+          resolve: {
+            alias: {
+              // TODO: Get dedicated React version for NDT to uncouple development.
+              react: `next/dist/compiled/react${bundledReactChannel}`,
+              'react-dom$': `next/dist/compiled/react-dom${bundledReactChannel}`,
+              'react-dom/client$': `next/dist/compiled/react-dom${bundledReactChannel}/client`,
+              'react-is$': `next/dist/compiled/react-is${bundledReactChannel}`,
+              // Required to avoid "switched to client rendering" warnings.
+              // But why is this needed?
+              scheduler$: `next/dist/compiled/scheduler${bundledReactChannel}`,
+            },
+          },
+        },
         // Alias server-only and client-only to proper exports based on bundling layers
         {
           issuerLayer: {

@@ -22,6 +22,12 @@ import {
 } from './components/app-router-instance'
 import AppRouter from './components/app-router'
 import type { InitialRSCPayload } from '../server/app-render/types'
+import {
+  getComponentStack,
+  getOwnerStack,
+} from './components/errors/stitched-error'
+// @ts-expect-error -- TODO: Dedicated entrypoint instead of resource query
+import { renderAppDevOverlay } from './components/react-dev-overlay/app/app-dev-overlay?next-devtools-app-bridge'
 import { createInitialRouterState } from './components/router-reducer/create-initial-router-state'
 import { MissingSlotContext } from '../shared/lib/app-router-context.shared-runtime'
 import { setAppBuildId } from './app-build-id'
@@ -287,6 +293,12 @@ export function hydrate(
         formState: initialFormStateData,
       })
     })
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    // TODO: lazy import
+    // render after actual root to make NDT root appear last in RDT Components tab
+    renderAppDevOverlay(getComponentStack, getOwnerStack)
   }
 
   // TODO-APP: Remove this logic when Float has GC built-in in development.
