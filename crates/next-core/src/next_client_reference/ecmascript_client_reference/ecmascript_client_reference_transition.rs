@@ -36,8 +36,8 @@ impl NextEcmascriptClientReferenceTransition {
 #[turbo_tasks::value_impl]
 impl Transition for NextEcmascriptClientReferenceTransition {
     #[turbo_tasks::function]
-    fn process_layer(self: Vc<Self>, layer: Vc<RcStr>) -> Vc<RcStr> {
-        layer
+    fn process_layer(self: Vc<Self>, layer: RcStr) -> Vc<RcStr> {
+        Vc::cell(layer)
     }
 
     #[turbo_tasks::function]
@@ -71,7 +71,7 @@ impl Transition for NextEcmascriptClientReferenceTransition {
                     .replace("next/dist/esm/", "next/dist/")
                     .into(),
             );
-            Vc::upcast(FileSource::new_with_query(path, *ident_ref.query))
+            Vc::upcast(FileSource::new_with_query(path, ident_ref.query.clone()))
         } else {
             source
         };
@@ -118,7 +118,7 @@ impl Transition for NextEcmascriptClientReferenceTransition {
             *module_asset_context.compile_time_info,
             *module_asset_context.module_options_context,
             *module_asset_context.resolve_options_context,
-            *module_asset_context.layer,
+            module_asset_context.layer.clone(),
         );
 
         Ok(ProcessResult::Module(ResolvedVc::upcast(
